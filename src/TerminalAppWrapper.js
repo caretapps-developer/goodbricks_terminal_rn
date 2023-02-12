@@ -2,7 +2,7 @@ import {useEffect, useRef, useState} from 'react';
 import {useStripeTerminal} from '@stripe/stripe-terminal-react-native';
 import TemrinalApp from './TemrinalApp';
 
-export default function TerminalAppWrapper() {
+export default function TerminalAppWrapper(props) {
   const {initialize} = useStripeTerminal();
   const [initialized, setInitialized] = useState(false);
 
@@ -10,5 +10,5 @@ export default function TerminalAppWrapper() {
     initialize().then(r => setInitialized(true));
   }, [initialize]);
 
-  return initialized && <TemrinalApp />;
+  return initialized && <TemrinalApp onUpdateOrganizationPublicId={props.onUpdateOrganizationPublicId} fetchedToken={props.fetchedToken}/>;
 }

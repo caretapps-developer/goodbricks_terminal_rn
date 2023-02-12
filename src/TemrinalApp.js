@@ -6,22 +6,23 @@ import {
   collectPaymentMethod,
   connectBluetoothReader,
   createPaymentIntent,
+  disconnectReader,
   retrievePaymentIntent,
 } from '@stripe/stripe-terminal-react-native/src/functions';
 
-export default function TemrinalApp() {
+export default function TemrinalApp(props) {
   const webViewRef = useRef(null);
   const runFirst = `
       // document.body.style.backgroundColor = 'red';
       true; // note: this is required, or you'll sometimes get silent failures
     `;
-
+  const [connectedReaderOrganization, setConnectedReaderOrganization] =
+    useState();
   const {
     discoverReaders,
     discoveredReaders,
     readReusableCard,
-    connectedReader,
-    cancelPaymentIntent,
+    cancelCollectPaymentMethod,
     processPayment,
   } = useStripeTerminal({
     onUpdateDiscoveredReaders: async readers => {
@@ -68,14 +69,15 @@ export default function TemrinalApp() {
 
   const doDiscoverAndConnectReader = async eventData => {
     if (discoveredReaders.length !== 0) {
+      console.log('discoveredReaders found 1: ', discoveredReaders[0]);
       await doConnectReader(discoveredReaders[0]);
     } else {
-      console.log('Discover readers 1: ');
+      console.log('### Discover readers 1 ###');
       const {error} = await discoverReaders({
         discoveryMethod: 'bluetoothScan',
         simulated: eventData.simulated,
       });
-      console.log('Discover readers 2: ');
+      console.log('### Discover readers 2 ###');
       if (error) {
         const {code, message} = error;
         console.log('Discover readers error: ', `${code}, ${message}`);
@@ -91,10 +93,17 @@ export default function TemrinalApp() {
       paymentMethodTypes: ['card_present'],
     }).then(createPaymentIntent => {
       if (createPaymentIntent.paymentIntent.id) {
-        console.log('### createPaymentIntent ###', createPaymentIntent);
+        console.log('### createPaymentIntent 1 ###', createPaymentIntent);
         collectPaymentMethod({
           paymentIntentId: createPaymentIntent.paymentIntent.id,
         }).then(async collectPaymentIntent => {
+          if (collectPaymentIntent.error) {
+            console.log(
+              '### paymentIntent error ###',
+              collectPaymentIntent.error.message,
+            );
+            return;
+          }
           console.log('### collectPaymentMethod ###', collectPaymentIntent);
           const {error, processPaymentIntent} = await processPayment(
             collectPaymentIntent.paymentIntent.id,
@@ -111,37 +120,12 @@ export default function TemrinalApp() {
           );
         });
       }
-
-      // if (createPaymentIntent.paymentIntent.id) {
-      //   console.log('### createPaymentIntent ###', createPaymentIntent);
-      //   retrievePaymentIntent(
-      //     'pi_3MYCeCLsBgg9CC460w2P3dTu_secret_ROZQBEPJ47wi99foS38q5LS8v',
-      //   ).then(retrievedPaymentIntent => {
-      //     console.log('### retrievedPaymentIntent ###', retrievedPaymentIntent);
-      //     collectPaymentMethod({
-      //       paymentIntentId: retrievedPaymentIntent.paymentIntent.id,
-      //     }).then(collectPaymentIntent => {
-      //       console.log('### collectPaymentMethod ###', collectPaymentIntent);
-      //       // postWebMessage(
-      //       //   'goodbricks.paymentIntentCreated',
-      //       //   collectPaymentIntent.paymentIntent.id,
-      //       // );
-      //       const {error, paymentPayment} = processPayment(
-      //         collectPaymentIntent.paymentIntent.id,
-      //       );
-      //       if (error) {
-      //         console.log('### paymentIntent error ###', error);
-      //       }
-      //       console.log('### paymentIntent ###', paymentPayment);
-      //       // console.log('### paymentIntent ###', collectPaymentIntent);
-      //     });
-      //   });
-      // }
     });
   };
 
   const doCancelPaymentIntent = async eventData => {
-    const response = await cancelPaymentIntent(eventData.paymentIntentId);
+    // const response = await cancelPaymentIntent(eventData.paymentIntentId);
+    const response = await cancelCollectPaymentMethod();
     postWebMessage(
       'goodbricks.paymentIntentCancelled',
       'Cancelled Payment intent',
@@ -169,13 +153,39 @@ export default function TemrinalApp() {
     webViewRef.current.injectJavaScript(javascriptToInject);
   }
 
-  const handleOnMessage = event => {
+  const handleOnMessage = async event => {
     console.log('### event ###', event.nativeEvent.data);
     const {data} = event.nativeEvent;
     const eventData = JSON.parse(data);
     switch (eventData.event) {
       case 'initializeTerminalForOrganization':
-        doDiscoverAndConnectReader(eventData.data);
+        if (
+          eventData.data.organizationPublicId === connectedReaderOrganization
+        ) {
+          doDiscoverAndConnectReader(eventData);
+          break;
+        }
+        props.onUpdateOrganizationPublicId(eventData.data.organizationPublicId);
+        if (discoveredReaders[0]) {
+          await disconnectReader();
+          console.log('### disconnected ###');
+        }
+        console.log(
+          'initializeTerminalForOrganization discover readers : ',
+          props.fetchedToken,
+        );
+
+        await sleep(3000);
+        await doDiscoverAndConnectReader(eventData);
+        // if (props.fetchedToken === 'fetched') {
+        //   const {error} = await discoverReaders({
+        //     discoveryMethod: 'bluetoothScan',
+        //     simulated: eventData.simulated,
+        //   });
+        //   const {code, message} = error;
+        //   console.log('Discover readers error: ', `${code}, ${message}`);
+        // }
+        setConnectedReaderOrganization(eventData.data.organizationPublicId);
         break;
       case 'discoverAndConnectReader':
         doDiscoverAndConnectReader(eventData.data);
@@ -189,8 +199,8 @@ export default function TemrinalApp() {
         console.log('### createPaymentMethod ###');
         break;
       case 'cancelPaymentIntent':
+        console.log('### cancelPaymentIntent ###', eventData.data);
         doCancelPaymentIntent(eventData.data);
-        console.log('### cancelPaymentIntent ###');
         break;
       case 'getConnectedReaderInfo':
         doFetchConnectedReaderInfo(eventData.data);
@@ -202,11 +212,13 @@ export default function TemrinalApp() {
     }
   };
 
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
   return (
     <WebView
       ref={webViewRef}
-      // source={{uri: 'https://terminal.sandbox.goodbricksapp.com'}}
-      source={{uri: 'http://localhost:3000/icsd.org'}}
+      source={{uri: 'https://terminal.sandbox.goodbricksapp.com'}}
+      // source={{uri: 'http://localhost:3000'}}
       style={{marginTop: 50}}
       onMessage={handleOnMessage}
       javaScriptEnabled={true}
