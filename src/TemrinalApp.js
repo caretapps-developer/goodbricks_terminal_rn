@@ -39,14 +39,10 @@ export default function TemrinalApp(props) {
     onDidRequestReaderInput(inputOptions) {
       postWebMessage('goodbricks.showCardInputOptions', inputOptions.join('/'));
     },
-    // onDidRequestReaderDisplayMessage: message => {
-    //   postWebMessage('goodbricks.showCardInputOptions', message);
-    // },
   });
 
   const doConnectReader = async reader => {
     console.log(' #### Reader Location: ', connectedReaderOrganization);
-    let locationId;
     const {reader: connectedReader, error} = await connectBluetoothReader({
       reader,
       locationId: props.locationId,
@@ -135,7 +131,6 @@ export default function TemrinalApp(props) {
   };
 
   const doCancelPaymentIntent = async eventData => {
-    // const response = await cancelPaymentIntent(eventData.paymentIntentId);
     const response = await cancelCollectPaymentMethod();
     postWebMessage(
       'goodbricks.paymentIntentCancelled',
@@ -152,10 +147,7 @@ export default function TemrinalApp(props) {
       return;
     }
     console.log('### PaymentMethodCreated ###', paymentMethod.id);
-    postWebMessage(
-      'goodbricks.paymentMethodCreated',
-      paymentMethod.id,
-    );
+    postWebMessage('goodbricks.paymentMethodCreated', paymentMethod.id);
     postWebMessage('goodbricks.updateReaderStatus', 'Processing payment...');
     console.log('### paymentMethodCreated ###', paymentMethod);
   };
@@ -226,7 +218,6 @@ export default function TemrinalApp(props) {
     <WebView
       ref={webViewRef}
       source={{uri: 'https://terminal.sandbox.goodbricksapp.com'}}
-      // source={{uri: 'http://localhost:3000'}}
       style={{marginTop: 50}}
       onMessage={handleOnMessage}
       javaScriptEnabled={true}
