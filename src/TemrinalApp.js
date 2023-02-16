@@ -1,13 +1,12 @@
 import {StyleSheet} from 'react-native';
 import {WebView} from 'react-native-webview';
-import {useEffect, useRef, useState} from 'react';
+import {useRef, useState} from 'react';
 import {useStripeTerminal} from '@stripe/stripe-terminal-react-native';
 import {
   collectPaymentMethod,
   connectBluetoothReader,
   createPaymentIntent,
   disconnectReader,
-  retrievePaymentIntent,
 } from '@stripe/stripe-terminal-react-native/src/functions';
 
 export default function TemrinalApp(props) {
@@ -28,7 +27,7 @@ export default function TemrinalApp(props) {
     onUpdateDiscoveredReaders: async readers => {
       // access to discovered readers
       const reader = readers[0];
-      console.log('### onUpdateDiscoveredReaders ###', reader.serialNumber);
+      console.log('### onUpdateDiscoveredReaders ###', reader);
       await doConnectReader(reader);
     },
     onDidChangeConnectionStatus: status => {
@@ -46,14 +45,26 @@ export default function TemrinalApp(props) {
   });
 
   const doConnectReader = async reader => {
+    console.log(' #### Reader Location: ', connectedReaderOrganization);
+    let locationId;
     const {reader: connectedReader, error} = await connectBluetoothReader({
       reader,
-      locationId: 'tml_705460bc-51d1-4427-9ef6-5a3b5e67d385',
+      locationId: props.locationId,
     });
     if (error) {
       if (error.code === 'AlreadyConnectedToReader') {
         console.log('connectedReader data:', reader);
-        postWebMessage('goodbricks.readerConnected', reader);
+        postWebMessage('goodbricks.updateReaderInfo', reader);
+      } else if (error.code === 'MustBeDiscoveringToConnect') {
+        const {error} = await discoverReaders({
+          discoveryMethod: 'bluetoothScan',
+          simulated: false,
+        });
+        console.log('### Discover readers 2 ###');
+        if (error) {
+          const {code, message} = error;
+          console.log('Discover readers error: ', `${code}, ${message}`);
+        }
       } else {
         console.log('connectBluetoothReader error:', error);
       }
@@ -135,8 +146,17 @@ export default function TemrinalApp(props) {
 
   const doCreatePaymentMethod = async eventData => {
     const {paymentMethod, error} = await readReusableCard({});
-
-    postWebMessage('goodbricks.paymentMethodCreated', paymentMethod.id);
+    if (error) {
+      console.log('### PaymentMethod error ###', error);
+      postWebMessage('goodbricks.showProcessingError', error.message);
+      return;
+    }
+    console.log('### PaymentMethodCreated ###', paymentMethod.id);
+    postWebMessage(
+      'goodbricks.paymentMethodCreated',
+      paymentMethod.id,
+    );
+    postWebMessage('goodbricks.updateReaderStatus', 'Processing payment...');
     console.log('### paymentMethodCreated ###', paymentMethod);
   };
 
@@ -170,21 +190,9 @@ export default function TemrinalApp(props) {
           await disconnectReader();
           console.log('### disconnected ###');
         }
-        console.log(
-          'initializeTerminalForOrganization discover readers : ',
-          props.fetchedToken,
-        );
-
-        await sleep(3000);
+        setConnectedReaderOrganization(eventData.data.organizationPublicId);
+        // await sleep(3000);
         await doDiscoverAndConnectReader(eventData);
-        // if (props.fetchedToken === 'fetched') {
-        //   const {error} = await discoverReaders({
-        //     discoveryMethod: 'bluetoothScan',
-        //     simulated: eventData.simulated,
-        //   });
-        //   const {code, message} = error;
-        //   console.log('Discover readers error: ', `${code}, ${message}`);
-        // }
         setConnectedReaderOrganization(eventData.data.organizationPublicId);
         break;
       case 'discoverAndConnectReader':

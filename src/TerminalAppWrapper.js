@@ -10,5 +10,5 @@ export default function TerminalAppWrapper(props) {
     initialize().then(r => setInitialized(true));
   }, [initialize]);
 
-  return initialized && <TemrinalApp onUpdateOrganizationPublicId={props.onUpdateOrganizationPublicId} fetchedToken={props.fetchedToken}/>;
+  return initialized && <TemrinalApp onUpdateOrganizationPublicId={props.onUpdateOrganizationPublicId} locationId={props.locationId}/>;
 }
