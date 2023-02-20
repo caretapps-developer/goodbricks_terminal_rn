@@ -236,7 +236,7 @@ export default function TemrinalApp(props) {
   return (
     <WebView
       ref={webViewRef}
-      source={{uri: 'https://terminal.sandbox.goodbricksapp.com'}}
+      source={{uri: 'https://v2.terminal.goodbricksapp.com'}}
       style={{marginTop: 50}}
       onMessage={handleOnMessage}
       javaScriptEnabled={true}
