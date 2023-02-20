@@ -619,7 +619,7 @@ SPEC CHECKSUMS:
   React-jsiexecutor: c7e028406112db456ac3cf5720d266bc7bc20938
   React-jsinspector: ea8101acf525ec08b2d87ddf0637d45f8e3b4148
   React-logger: 97987f46779d8dd24656474ad0c43a5b459f31d6
-  react-native-webview: e3b659a6d614bb37fb12a2de82c91a378c59d84b
+  react-native-webview: 9f111dfbcfc826084d6c507f569e5e03342ee1c1
   React-perflogger: c7ccda3d1d1da837f7ff4e54e816022a6803ee87
   React-RCTActionSheet: 01c125aebbad462a24228f68c584c7a921d6c28e
   React-RCTAnimation: 5277a9440acffc4a5b7baa6ae3880fe467277ae6
@@ -633,9 +633,9 @@ SPEC CHECKSUMS:
   React-RCTVibration: 0af3babdeee1b2d052811a2f86977d1e1c81ebd1
   React-runtimeexecutor: 4bf9a9086d27f74065fce1dddac274aa95216952
   ReactCommon: f697c0ac52e999aa818e43e2b6f277787c735e2d
-  RNDeviceInfo: c57ce489d22d4ec17ba533b0e3a1bcb87175939e
+  RNDeviceInfo: 749f2e049dcd79e2e44f134f66b73a06951b5066
   SocketRocket: fccef3f9c5cedea1353a9ef6ada904fde10d6608
-  stripe-terminal-react-native: a39b71571df40d45d9beb9788829ba5e43735c6c
+  stripe-terminal-react-native: e29505bc9d1531d25f545e7f5db396c3ac83c1bd
   StripeTerminal: aa6d728d8787da533f16fe04f39ef6da805dea66
   Yoga: 5b0304b3dbef2b52e078052138e23a19c7dacaef
   YogaKit: f782866e155069a2cca2517aafea43200b01fd5a
