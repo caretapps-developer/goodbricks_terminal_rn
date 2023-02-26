@@ -10,38 +10,29 @@ import {
 
 export default function TemrinalApp(props) {
   const webViewRef = useRef(null);
-  const [connectedReaderOrganization, setConnectedReaderOrganization] =
-    useState();
-  const {
-    discoverReaders,
-    discoveredReaders,
-    readReusableCard,
-    cancelCollectPaymentMethod,
-    processPayment,
-  } = useStripeTerminal({
-    onUpdateDiscoveredReaders: async readers => {
-      // access to discovered readers
-      const reader = readers[0];
-      console.log('### Reader discovered. ', reader);
-      postWebMessage(
-        'goodbricks.readerDisplayUpdated',
-        `Reader discovered. ${reader.serialNumber}`,
-      );
-      await doConnectReader(reader);
-    },
-    onDidChangeConnectionStatus: status => {
-      // access to the current connection status
-      console.log('### Reader status. ', status);
-      postWebMessage('goodbricks.readerDisplayUpdated', `Reader ${status}`);
-    },
-    // When a transaction begins, the SDK passes a ReaderInputOptions value to your app’s reader display handler, denoting the acceptable types of input (for example, Swipe, Insert, Tap). In your app’s checkout UI, prompt the user to present a card using one of these options.
-    // During the transaction, the SDK might request your app to display additional prompts (for example, Retry Card) to your user by passing a ReaderDisplayMessage value to your app’s reader display handler. Make sure your checkout UI displays these messages to the user.
-    onDidRequestReaderInput(inputOptions) {
-      postWebMessage('goodbricks.showCardInputOptions', inputOptions.join('/'));
-    },
-  });
+  const [connectedReaderOrganization, setConnectedReaderOrganization] = useState();
+  const {discoverReaders, discoveredReaders, readReusableCard, cancelCollectPaymentMethod, processPayment} =
+    useStripeTerminal({
+      onUpdateDiscoveredReaders: async readers => {
+        // access to discovered readers
+        const reader = readers[0];
+        console.log('### Reader discovered. ', reader);
+        postWebMessage('goodbricks.readerDisplayUpdated', `Reader discovered. ${reader.serialNumber}`);
+        await doConnectReader(reader);
+      },
+      onDidChangeConnectionStatus: status => {
+        // access to the current connection status
+        console.log('### Reader status. ', status);
+        postWebMessage('goodbricks.readerDisplayUpdated', `Reader ${status}`);
+      },
+      // When a transaction begins, the SDK passes a ReaderInputOptions value to your app’s reader display handler, denoting the acceptable types of input (for example, Swipe, Insert, Tap). In your app’s checkout UI, prompt the user to present a card using one of these options.
+      // During the transaction, the SDK might request your app to display additional prompts (for example, Retry Card) to your user by passing a ReaderDisplayMessage value to your app’s reader display handler. Make sure your checkout UI displays these messages to the user.
+      onDidRequestReaderInput(inputOptions) {
+        postWebMessage('goodbricks.showCardInputOptions', inputOptions.join('/'));
+      },
+    });
 
-  const doConnectReader = async reader => {
+  const doConnectReader = async (reader, simulated = false) => {
     console.log('### Connecting reader to : ', connectedReaderOrganization);
     const {reader: connectedReader, error} = await connectBluetoothReader({
       reader,
@@ -55,21 +46,18 @@ export default function TemrinalApp(props) {
         console.log('### Calling discover readers again... ');
         const {error} = await discoverReaders({
           discoveryMethod: 'bluetoothScan',
-          simulated: false,
+          simulated: simulated,
         });
         if (error) {
           const {code, message} = error;
-          console.warn('### Discover readers error: ', `${code}, ${message}`);
+          console.warn(`### Discover readers error. ${code}: ${message}`);
         }
       } else {
         const {code, message} = error;
-        console.warn(
-          '### Connect BluetoothReader error:',
-          `${code}, ${message}`,
-        );
+        console.warn(`### Connect BluetoothReader error. ${code}: ${message}`);
       }
     } else {
-      console.log('### Reader connected: ', connectedReader.serialNumber);
+      console.log('### Reader connected: ', connectedReader.serialNumber, connectedReaderOrganization);
       postWebMessage(
         'goodbricks.readerDisplayUpdated',
         `Reader discovered and connected. ${connectedReader.serialNumber}`,
@@ -78,22 +66,19 @@ export default function TemrinalApp(props) {
     }
   };
 
-  const doDiscoverAndConnectReader = async eventData => {
-    if (discoveredReaders.length !== 0) {
-      console.log(
-        '### Connecting to previously discovered reader: ',
-        discoveredReaders[0].serialNumber,
-      );
-      await doConnectReader(discoveredReaders[0]);
+  const doDiscoverAndConnectReader = async (eventData, hardconnect = false) => {
+    if (discoveredReaders.length !== 0 && !hardconnect) {
+      console.log('### Connecting to previously discovered reader: ', discoveredReaders[0].serialNumber);
+      await doConnectReader(discoveredReaders[0], eventData.data.simulated);
     } else {
       console.log('### Discovering readers... ');
       const {error} = await discoverReaders({
         discoveryMethod: 'bluetoothScan',
-        simulated: eventData.simulated,
+        simulated: eventData.data.simulated,
       });
       if (error) {
         const {code, message} = error;
-        console.warn('### Discover readers error: ', `${code}, ${message}`);
+        console.warn(`### Discover readers error. ${code}: ${message}`);
       }
     }
   };
@@ -110,37 +95,22 @@ export default function TemrinalApp(props) {
         collectPaymentMethod({
           paymentIntentId: createPaymentIntent.paymentIntent.id,
         }).then(async collectPaymentIntent => {
-          console.log(
-            `### Collecting payment method for intent: ${createPaymentIntent}`,
-          );
+          console.log(`### Collecting payment method for intent: ${createPaymentIntent}`);
           if (collectPaymentIntent.error) {
             console.warn(
-              '### Collecting payment method error ',
-              collectPaymentIntent.error.code,
-              collectPaymentIntent.error.message,
+              `### Collecting payment method error. ${collectPaymentIntent.error.code}: ${collectPaymentIntent.error.message}`,
             );
-            postWebMessage('goodbricks.showProcessingError', error.message);
+            postWebMessage('goodbricks.showProcessingError', collectPaymentIntent.error.message);
             return;
           }
-          console.log(
-            '### Collected payment method. Now processing payment...',
-          );
-          const {error, processPaymentIntent} = await processPayment(
-            collectPaymentIntent.paymentIntent.id,
-          );
+          console.log('### Collected payment method. Now processing payment...');
+          const {error, processPaymentIntent} = await processPayment(collectPaymentIntent.paymentIntent.id);
           if (error) {
-            console.warn(
-              '### Process payment method error ',
-              error.code,
-              error.message,
-            );
+            console.warn(`### Process payment method error. ${error.code}: ${error.message}`);
             postWebMessage('goodbricks.showProcessingError', error.message);
             return;
           }
-          postWebMessage(
-            'goodbricks.paymentIntentCreated',
-            collectPaymentIntent.paymentIntent.id,
-          );
+          postWebMessage('goodbricks.paymentIntentCreated', collectPaymentIntent.paymentIntent.id);
         });
       }
     });
@@ -149,21 +119,15 @@ export default function TemrinalApp(props) {
   const doCancelPaymentIntent = async eventData => {
     console.log('### Canceling payment intent...');
     await cancelCollectPaymentMethod();
-    postWebMessage(
-      'goodbricks.paymentIntentCancelled',
-      'Cancelled Payment intent',
-    );
+    postWebMessage('goodbricks.paymentIntentCancelled', 'Cancelled Payment intent');
+    console.log('### Canceled payment intent...');
   };
 
   const doCreatePaymentMethod = async eventData => {
     console.log('### Saving payment method...');
     const {paymentMethod, error} = await readReusableCard({});
     if (error) {
-      console.warn(
-        '### Error saving payment method. ',
-        error.code,
-        error.message,
-      );
+      console.warn(`### Error saving payment method. ${error.code}: ${error.message}`);
       postWebMessage('goodbricks.showProcessingError', error.message);
       return;
     }
@@ -188,27 +152,22 @@ export default function TemrinalApp(props) {
 
   const handleOnMessage = async event => {
     const {data} = event.nativeEvent;
-    console.log('### Web message received', event.nativeEvent.data);
+    console.log('### Web message received', data);
     const eventData = JSON.parse(data);
     switch (eventData.event) {
       case 'initializeTerminalForOrganization':
-        if (
-          eventData.data.organizationPublicId === connectedReaderOrganization
-        ) {
+        if (eventData.data.organizationPublicId === connectedReaderOrganization) {
           await doDiscoverAndConnectReader(eventData);
           break;
         }
         props.onUpdateOrganizationPublicId(eventData.data.organizationPublicId);
         if (discoveredReaders[0]) {
           await disconnectReader();
-          console.log(
-            '### Reader disconnected: ',
-            discoveredReaders[0].serialNumber,
-          );
+          console.log('### Reader disconnected: ', discoveredReaders[0].serialNumber);
         }
         setConnectedReaderOrganization(eventData.data.organizationPublicId);
         // await sleep(3000);
-        await doDiscoverAndConnectReader(eventData);
+        await doDiscoverAndConnectReader(eventData, true);
         break;
       case 'discoverAndConnectReader':
         await doDiscoverAndConnectReader(eventData.data);
