@@ -11,14 +11,25 @@ import {
 export default function TemrinalApp(props) {
   const webViewRef = useRef(null);
   const [connectedReaderOrganization, setConnectedReaderOrganization] = useState();
+  const [connectedReader, setConnectedReader] = useState();
+  const [lockedTo, setLockedTo] = useState();
   const {discoverReaders, discoveredReaders, readReusableCard, cancelCollectPaymentMethod, processPayment} =
     useStripeTerminal({
       onUpdateDiscoveredReaders: async readers => {
-        // access to discovered readers
-        const reader = readers[0];
-        console.log('### Reader discovered. ', reader);
-        postWebMessage('goodbricks.readerDisplayUpdated', `Reader discovered. ${reader.serialNumber}`);
-        await doConnectReader(reader);
+        console.log('### onUpdateDiscoveredReaders. ', readers.length);
+        for (var i = 0; i < readers.length; i++) {
+          if (readers[i] && lockedTo && lockedTo !== readers[i].serialNumber.slice(-5)) {
+            console.log('### Discovered reader: ' + readers[i].serialNumber + '. But device locked to: ', lockedTo);
+            postWebMessage(
+              'goodbricks.readerDisplayUpdated',
+              `Discovered reader ${readers[i].serialNumber}, but device locked to ...${lockedTo}`,
+            );
+          } else {
+            postWebMessage('goodbricks.readerDisplayUpdated', `Reader discovered. ${readers[i].serialNumber}`);
+            await doConnectReader(readers[i]);
+            break;
+          }
+        }
       },
       onDidChangeConnectionStatus: status => {
         // access to the current connection status
@@ -33,11 +44,20 @@ export default function TemrinalApp(props) {
     });
 
   const doConnectReader = async (reader, simulated = false) => {
+    if (lockedTo && lockedTo !== reader.serialNumber.slice(-5)) {
+      console.log('### Reader locked to: ', lockedTo);
+      postWebMessage(
+        'goodbricks.readerDisplayUpdated',
+        'Unable to connect: ' + reader.serialNumber + ' Device is locked to reader: ' + lockedTo,
+      );
+      return;
+    }
     console.log('### Connecting reader to : ', connectedReaderOrganization);
     const {reader: connectedReader, error} = await connectBluetoothReader({
       reader,
       locationId: props.locationId,
     });
+    setConnectedReader(connectedReader);
     if (error) {
       if (error.code === 'AlreadyConnectedToReader') {
         console.log('### Reader already connected data: ', reader.serialNumber);
@@ -58,6 +78,7 @@ export default function TemrinalApp(props) {
       }
     } else {
       console.log('### Reader connected: ', connectedReader.serialNumber, connectedReaderOrganization);
+      setConnectedReader(connectedReader);
       postWebMessage(
         'goodbricks.readerDisplayUpdated',
         `Reader discovered and connected. ${connectedReader.serialNumber}`,
@@ -66,15 +87,26 @@ export default function TemrinalApp(props) {
     }
   };
 
-  const doDiscoverAndConnectReader = async (eventData, hardconnect = false) => {
+  const doDiscoverAndConnectReader = async (data, hardconnect = false) => {
+    setLockedTo(data.deviceLockedTo);
     if (discoveredReaders.length !== 0 && !hardconnect) {
-      console.log('### Connecting to previously discovered reader: ', discoveredReaders[0].serialNumber);
-      await doConnectReader(discoveredReaders[0], eventData.data.simulated);
+      for (var i = 0; i < discoveredReaders.length; i++) {
+        if (lockedTo && lockedTo !== discoveredReaders[i].serialNumber.slice(-5)) {
+          console.log(
+            '### Unable to connect to ' + discoveredReaders[i].serialNumber + '. Reader locked to: ',
+            lockedTo,
+          );
+        } else {
+          console.log('### Connecting to previously discovered reader: ', discoveredReaders[i].serialNumber);
+          await doConnectReader(discoveredReaders[i], data?.simulated);
+          break;
+        }
+      }
     } else {
       console.log('### Discovering readers... ');
       const {error} = await discoverReaders({
         discoveryMethod: 'bluetoothScan',
-        simulated: eventData.data.simulated,
+        simulated: data.simulated,
       });
       if (error) {
         const {code, message} = error;
@@ -138,7 +170,7 @@ export default function TemrinalApp(props) {
 
   const doFetchConnectedReaderInfo = async eventData => {
     console.log('### Fetching reader info... ');
-    postWebMessage('goodbricks.updateReaderInfo', discoveredReaders[0]);
+    postWebMessage('goodbricks.updateReaderInfo', connectedReader);
   };
 
   function postWebMessage(topic, message) {
@@ -157,17 +189,17 @@ export default function TemrinalApp(props) {
     switch (eventData.event) {
       case 'initializeTerminalForOrganization':
         if (eventData.data.organizationPublicId === connectedReaderOrganization) {
-          await doDiscoverAndConnectReader(eventData);
+          await doDiscoverAndConnectReader(eventData.data);
           break;
         }
         props.onUpdateOrganizationPublicId(eventData.data.organizationPublicId);
-        if (discoveredReaders[0]) {
+        if (connectedReader) {
           await disconnectReader();
-          console.log('### Reader disconnected: ', discoveredReaders[0].serialNumber);
+          console.log('### Reader disconnected: ', connectedReader.serialNumber);
         }
         setConnectedReaderOrganization(eventData.data.organizationPublicId);
         // await sleep(3000);
-        await doDiscoverAndConnectReader(eventData, true);
+        await doDiscoverAndConnectReader(eventData.data, true);
         break;
       case 'discoverAndConnectReader':
         await doDiscoverAndConnectReader(eventData.data);
@@ -195,7 +227,7 @@ export default function TemrinalApp(props) {
   return (
     <WebView
       ref={webViewRef}
-      source={{uri: 'https://v2.terminal.goodbricksapp.com'}}
+      source={{uri: 'https://terminal.goodbricksapp.com'}}
       style={{marginTop: 50}}
       onMessage={handleOnMessage}
       javaScriptEnabled={true}

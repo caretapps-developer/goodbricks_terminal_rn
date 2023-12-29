@@ -8,3 +8,5 @@
 4. npx react-native start
 5. npm install @stripe/stripe-terminal-react-native
 6. cd ios, pod install
+
+https://reactnative.dev/docs/running-on-device
