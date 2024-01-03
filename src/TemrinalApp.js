@@ -1,5 +1,5 @@
 import {WebView} from 'react-native-webview';
-import {useRef, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import {useStripeTerminal} from '@stripe/stripe-terminal-react-native';
 import {
   collectPaymentMethod,
@@ -10,9 +10,9 @@ import {
 
 export default function TemrinalApp(props) {
   const webViewRef = useRef(null);
-  const [connectedReaderOrganization, setConnectedReaderOrganization] = useState();
-  const [connectedReader, setConnectedReader] = useState();
-  const [lockedTo, setLockedTo] = useState();
+  const [connectedReaderOrganization, setConnectedReaderOrganization] = useState(null);
+  const [connectedReader, setConnectedReader] = useState(null);
+  const [lockedTo, setLockedTo] = useState(null);
   const {discoverReaders, discoveredReaders, readReusableCard, cancelCollectPaymentMethod, processPayment} =
     useStripeTerminal({
       onUpdateDiscoveredReaders: async readers => {
@@ -34,7 +34,11 @@ export default function TemrinalApp(props) {
       onDidChangeConnectionStatus: status => {
         // access to the current connection status
         console.log('### Reader status. ', status);
-        postWebMessage('goodbricks.readerDisplayUpdated', `Reader ${status}`);
+        if(status === "notConnected"){
+          postWebMessage('goodbricks.readerDisconnected', `Reader disconnected.`);
+        } else {
+          postWebMessage('goodbricks.readerDisplayUpdated', `Reader ${status}`);
+        }
       },
       // When a transaction begins, the SDK passes a ReaderInputOptions value to your app’s reader display handler, denoting the acceptable types of input (for example, Swipe, Insert, Tap). In your app’s checkout UI, prompt the user to present a card using one of these options.
       // During the transaction, the SDK might request your app to display additional prompts (for example, Retry Card) to your user by passing a ReaderDisplayMessage value to your app’s reader display handler. Make sure your checkout UI displays these messages to the user.
@@ -42,6 +46,10 @@ export default function TemrinalApp(props) {
         postWebMessage('goodbricks.showCardInputOptions', inputOptions.join('/'));
       },
     });
+
+  useEffect(() => {
+    postWebMessage('goodbricks.readerDisplayUpdated', 'Device locked to reader: ' + lockedTo);
+  }, [lockedTo]);
 
   const doConnectReader = async (reader, simulated = false) => {
     if (lockedTo && lockedTo !== reader.serialNumber.slice(-5)) {
@@ -57,7 +65,6 @@ export default function TemrinalApp(props) {
       reader,
       locationId: props.locationId,
     });
-    setConnectedReader(connectedReader);
     if (error) {
       if (error.code === 'AlreadyConnectedToReader') {
         console.log('### Reader already connected data: ', reader.serialNumber);
@@ -71,10 +78,12 @@ export default function TemrinalApp(props) {
         if (error) {
           const {code, message} = error;
           console.warn(`### Discover readers error. ${code}: ${message}`);
+          postWebMessage('goodbricks.readerDisplayUpdated', `DiscoverError: ${message}`);
         }
       } else {
         const {code, message} = error;
         console.warn(`### Connect BluetoothReader error. ${code}: ${message}`);
+        postWebMessage('goodbricks.readerDisplayUpdated', `BluetoothReaderError: ${message}`);
       }
     } else {
       console.log('### Reader connected: ', connectedReader.serialNumber, connectedReaderOrganization);
@@ -88,7 +97,16 @@ export default function TemrinalApp(props) {
   };
 
   const doDiscoverAndConnectReader = async (data, hardconnect = false) => {
-    setLockedTo(data.deviceLockedTo);
+    if (
+      data.deviceLockedTo &&
+      data.deviceLockedTo.trim() !== '' &&
+      data.deviceLockedTo.trim() !== 'undefined' &&
+      data.deviceLockedTo.trim() !== 'null'
+    ) {
+      setLockedTo(data.deviceLockedTo.trim());
+    } else {
+      setLockedTo(null);
+    }
     if (discoveredReaders.length !== 0 && !hardconnect) {
       for (var i = 0; i < discoveredReaders.length; i++) {
         if (lockedTo && lockedTo !== discoveredReaders[i].serialNumber.slice(-5)) {
@@ -168,11 +186,6 @@ export default function TemrinalApp(props) {
     console.log('### Saved payment method: ', paymentMethod.id);
   };
 
-  const doFetchConnectedReaderInfo = async eventData => {
-    console.log('### Fetching reader info... ');
-    postWebMessage('goodbricks.updateReaderInfo', connectedReader);
-  };
-
   function postWebMessage(topic, message) {
     const responseJSON = {topic, message};
     const javascriptToInject = `
@@ -198,6 +211,16 @@ export default function TemrinalApp(props) {
           console.log('### Reader disconnected: ', connectedReader.serialNumber);
         }
         setConnectedReaderOrganization(eventData.data.organizationPublicId);
+        if (
+          eventData.data.deviceLockedTo &&
+          eventData.data.deviceLockedTo.trim() !== '' &&
+          eventData.data.deviceLockedTo.trim() !== 'undefined' &&
+          eventData.data.deviceLockedTo.trim() !== 'null'
+        ) {
+          setLockedTo(eventData.data.deviceLockedTo.trim());
+        } else {
+          setLockedTo(null);
+        }
         // await sleep(3000);
         await doDiscoverAndConnectReader(eventData.data, true);
         break;
@@ -212,9 +235,6 @@ export default function TemrinalApp(props) {
         break;
       case 'cancelPaymentIntent':
         await doCancelPaymentIntent(eventData.data);
-        break;
-      case 'getConnectedReaderInfo':
-        await doFetchConnectedReaderInfo(eventData.data);
         break;
       default:
         console.log('### Ignoring event...', eventData.data);
