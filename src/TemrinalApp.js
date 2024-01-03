@@ -26,7 +26,7 @@ export default function TemrinalApp(props) {
             );
           } else {
             postWebMessage('goodbricks.readerDisplayUpdated', `Reader discovered. ${readers[i].serialNumber}`);
-            await doConnectReader(readers[i]);
+            await doConnectReader(readers[i], lockedTo);
             break;
           }
         }
@@ -34,8 +34,8 @@ export default function TemrinalApp(props) {
       onDidChangeConnectionStatus: status => {
         // access to the current connection status
         console.log('### Reader status. ', status);
-        if(status === "notConnected"){
-          postWebMessage('goodbricks.readerDisconnected', `Reader disconnected.`);
+        if (status === 'notConnected') {
+          postWebMessage('goodbricks.readerDisconnected', 'Reader disconnected.');
         } else {
           postWebMessage('goodbricks.readerDisplayUpdated', `Reader ${status}`);
         }
@@ -51,12 +51,12 @@ export default function TemrinalApp(props) {
     postWebMessage('goodbricks.readerDisplayUpdated', 'Device locked to reader: ' + lockedTo);
   }, [lockedTo]);
 
-  const doConnectReader = async (reader, simulated = false) => {
-    if (lockedTo && lockedTo !== reader.serialNumber.slice(-5)) {
-      console.log('### Reader locked to: ', lockedTo);
+  const doConnectReader = async (reader, readerLockedTo, simulated = false) => {
+    if (readerLockedTo && readerLockedTo !== reader.serialNumber.slice(-5)) {
+      console.log('### Reader locked to: ', readerLockedTo);
       postWebMessage(
         'goodbricks.readerDisplayUpdated',
-        'Unable to connect: ' + reader.serialNumber + ' Device is locked to reader: ' + lockedTo,
+        'Unable to connect: ' + reader.serialNumber + ' Device is locked to reader: ' + readerLockedTo,
       );
       return;
     }
@@ -83,7 +83,7 @@ export default function TemrinalApp(props) {
       } else {
         const {code, message} = error;
         console.warn(`### Connect BluetoothReader error. ${code}: ${message}`);
-        postWebMessage('goodbricks.readerDisplayUpdated', `BluetoothReaderError: ${message}`);
+        // postWebMessage('goodbricks.readerDisplayUpdated', `BluetoothReaderError: ${code} : ${message}`);
       }
     } else {
       console.log('### Reader connected: ', connectedReader.serialNumber, connectedReaderOrganization);
@@ -97,26 +97,28 @@ export default function TemrinalApp(props) {
   };
 
   const doDiscoverAndConnectReader = async (data, hardconnect = false) => {
+    var lockedReader;
     if (
       data.deviceLockedTo &&
       data.deviceLockedTo.trim() !== '' &&
       data.deviceLockedTo.trim() !== 'undefined' &&
       data.deviceLockedTo.trim() !== 'null'
     ) {
-      setLockedTo(data.deviceLockedTo.trim());
+      lockedReader = data.deviceLockedTo.trim();
     } else {
-      setLockedTo(null);
+      lockedReader = null;
     }
+    setLockedTo(lockedReader);
     if (discoveredReaders.length !== 0 && !hardconnect) {
       for (var i = 0; i < discoveredReaders.length; i++) {
-        if (lockedTo && lockedTo !== discoveredReaders[i].serialNumber.slice(-5)) {
+        if (lockedReader && lockedReader !== discoveredReaders[i].serialNumber.slice(-5)) {
           console.log(
             '### Unable to connect to ' + discoveredReaders[i].serialNumber + '. Reader locked to: ',
-            lockedTo,
+            lockedReader,
           );
         } else {
           console.log('### Connecting to previously discovered reader: ', discoveredReaders[i].serialNumber);
-          await doConnectReader(discoveredReaders[i], data?.simulated);
+          await doConnectReader(discoveredReaders[i], lockedReader, data?.simulated);
           break;
         }
       }
@@ -201,7 +203,10 @@ export default function TemrinalApp(props) {
     const eventData = JSON.parse(data);
     switch (eventData.event) {
       case 'initializeTerminalForOrganization':
-        if (eventData.data.organizationPublicId === connectedReaderOrganization) {
+        if (
+          eventData.data.organizationPublicId === connectedReaderOrganization &&
+          eventData.data.deviceLockedTo === lockedTo
+        ) {
           await doDiscoverAndConnectReader(eventData.data);
           break;
         }
@@ -211,21 +216,11 @@ export default function TemrinalApp(props) {
           console.log('### Reader disconnected: ', connectedReader.serialNumber);
         }
         setConnectedReaderOrganization(eventData.data.organizationPublicId);
-        if (
-          eventData.data.deviceLockedTo &&
-          eventData.data.deviceLockedTo.trim() !== '' &&
-          eventData.data.deviceLockedTo.trim() !== 'undefined' &&
-          eventData.data.deviceLockedTo.trim() !== 'null'
-        ) {
-          setLockedTo(eventData.data.deviceLockedTo.trim());
-        } else {
-          setLockedTo(null);
-        }
         // await sleep(3000);
         await doDiscoverAndConnectReader(eventData.data, true);
         break;
       case 'discoverAndConnectReader':
-        await doDiscoverAndConnectReader(eventData.data);
+        await doDiscoverAndConnectReader(eventData.data, true);
         break;
       case 'createPaymentIntent':
         await doCreatePaymentIntent(eventData.data);
