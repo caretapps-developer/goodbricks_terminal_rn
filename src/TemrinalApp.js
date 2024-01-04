@@ -205,7 +205,7 @@ export default function TemrinalApp(props) {
       case 'initializeTerminalForOrganization':
         if (
           eventData.data.organizationPublicId === connectedReaderOrganization &&
-          eventData.data.deviceLockedTo === lockedTo
+          (!eventData.data.deviceLockedTo || eventData.data.deviceLockedTo === lockedTo)
         ) {
           await doDiscoverAndConnectReader(eventData.data);
           break;
